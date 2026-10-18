@@ -14,7 +14,7 @@
   <style>
     /* 復古羊皮紙與紅墨水塗鴉風格 */
     body {
-      background-color: #f4ecd8; /* 羊皮紙底色 */
+      background-color: #f4ecd8;
       font-family: 'Helvetica Neue', sans-serif;
       color: #333;
       display: flex;
@@ -32,8 +32,10 @@
     }
     h1, h2, h3 { text-align: center; color: #4a3b32; }
     
-    .input-group { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
-    input { padding: 10px; border: 2px solid #4a3b32; border-radius: 6px; font-size: 16px; }
+    .input-group { display: flex; flex-direction: column; gap: 15px; align-items: center; margin-bottom: 20px; }
+    .input-row { display: flex; gap: 10px; justify-content: center; width: 100%; max-width: 400px; }
+    input { flex: 1; padding: 10px; border: 2px solid #4a3b32; border-radius: 6px; font-size: 16px; }
+    
     button {
       padding: 10px 20px;
       background-color: #4a3b32;
@@ -48,7 +50,11 @@
     button:active { transform: scale(0.95); }
     button:disabled { background-color: #ccc; cursor: not-allowed; }
 
-    /* 紅墨水吐槽風格 (用於錯誤提示或強調) */
+    /* 警告與危險操作按鈕 */
+    .btn-danger { background-color: #d32f2f; }
+    .btn-small { padding: 4px 8px; font-size: 12px; margin-left: 10px; }
+
+    /* 紅墨水吐槽風格 */
     .red-ink-doodle {
       color: #d32f2f;
       font-family: 'Comic Sans MS', cursive;
@@ -59,47 +65,27 @@
       margin-top: 10px;
     }
 
-    /* 卡牌與拖曳區佈局 */
     .board-area, .hand-area {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      margin: 20px 0;
-      min-height: 80px;
+      display: flex; gap: 10px; justify-content: center; margin: 20px 0; min-height: 80px; flex-wrap: wrap;
     }
     .slot {
-      width: 60px;
-      height: 80px;
-      border: 2px dashed #4a3b32;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: rgba(0,0,0,0.05);
+      width: 60px; height: 80px; border: 2px dashed #4a3b32; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; background-color: rgba(0,0,0,0.05);
     }
     .card {
-      width: 60px;
-      height: 80px;
-      background-color: #fff;
-      border: 2px solid #4a3b32;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-      font-weight: bold;
-      cursor: grab;
-      box-shadow: 2px 2px 0px #4a3b32;
-      user-select: none;
+      width: 60px; height: 80px; background-color: #fff; border: 2px solid #4a3b32; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: bold;
+      cursor: grab; box-shadow: 2px 2px 0px #4a3b32; user-select: none;
     }
     .card:active { cursor: grabbing; }
     
     .status-panel {
-      background: #e9e2ce;
-      padding: 15px;
-      border-radius: 8px;
-      border: 2px solid #4a3b32;
-      margin-bottom: 20px;
+      background: #e9e2ce; padding: 15px; border-radius: 8px; border: 2px solid #4a3b32; margin-bottom: 20px;
+    }
+    
+    .player-chip {
+      background: rgba(255,255,255,0.6); padding: 5px 10px; border-radius: 20px; border: 1px solid #4a3b32;
+      display: flex; align-items: center;
     }
   </style>
 </head>
@@ -107,12 +93,12 @@
 
   <div id="root"></div>
 
-  <!-- 使用 type="text/babel" 搭配 data-type="module" 來使用 Firebase CDN import -->
   <script type="text/babel" data-type="module">
+    // 增加引入 remove 用來刪除房間
     import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-    import { getDatabase, ref, set, get, update, onValue } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+    import { getDatabase, ref, set, get, update, onValue, remove } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 
-    // 1. Firebase 初始化 (直接套用你提供的設定)
+    // Firebase 初始化
     const firebaseConfig = {
       apiKey: "AIzaSyD_NvqFklhilwIMOJ7dGIdAsuz1IGuCH_w",
       authDomain: "maybespellsomething.firebaseapp.com",
@@ -126,16 +112,13 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-
     const { useState, useEffect } = React;
 
-    // 產生隨機字母的工具 (增加母音比例)
     const getRandomLetter = () => {
       const letters = "AAAAEEEIIIOOOUUUBBCDDFFGGGHHJKLLMMNNPPRRSSTTVWXYZ";
       return letters[Math.floor(Math.random() * letters.length)];
     };
 
-    // 驗證單字 API
     const checkWordIsValid = async (word) => {
       if (!word || word.length < 2) return false;
       try {
@@ -146,81 +129,141 @@
       }
     };
 
-    // --- 主元件 ---
     function App() {
       const [nickname, setNickname] = useState("");
       const [roomId, setRoomId] = useState("");
       const [inRoom, setInRoom] = useState(false);
       
-      // 遊戲狀態
       const [roomData, setRoomData] = useState(null);
       const [handCards, setHandCards] = useState([]);
       const [boardSlots, setBoardSlots] = useState([null, null, null, null, null, null, null]);
       const [errorMsg, setErrorMsg] = useState("");
 
-      // 監聽房間資料
+      // 重置回大廳狀態
+      const backToLobby = () => {
+        setInRoom(false);
+        setRoomData(null);
+        setHandCards([]);
+        setBoardSlots([null, null, null, null, null, null, null]);
+      };
+
+      // 監聽房間狀態 (處理被踢或解散)
       useEffect(() => {
         if (inRoom && roomId) {
           const roomRef = ref(db, `rooms/${roomId}`);
           const unsubscribe = onValue(roomRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) {
-              setRoomData(data);
-              // 同步自己的手牌
-              if (data.players && data.players[nickname] && data.players[nickname].hand) {
-                setHandCards(data.players[nickname].hand);
-              } else {
-                setHandCards([]);
-              }
+            
+            // 1. 房間不存在 (被解散)
+            if (!data) {
+              alert("❌ 房間已被房主解散！");
+              backToLobby();
+              return;
+            }
+            
+            // 2. 玩家不在名單內 (被踢出)
+            if (!data.players || !data.players[nickname]) {
+              alert("❌ 你已被房主踢出房間！");
+              backToLobby();
+              return;
+            }
+
+            setRoomData(data);
+            if (data.players[nickname] && data.players[nickname].hand) {
+              setHandCards(data.players[nickname].hand);
+            } else {
+              setHandCards([]);
             }
           });
           return () => unsubscribe();
         }
       }, [inRoom, roomId, nickname]);
 
-      // 加入/建立房間
-      const joinRoom = async () => {
+      // --- 創建房間 ---
+      const handleCreateRoom = async () => {
+        if (!nickname || !roomId) return alert("請輸入暱稱與房號！");
+        
+        const roomRef = ref(db, `rooms/${roomId}`);
+        const snapshot = await get(roomRef);
+        
+        if (snapshot.exists()) {
+          return alert("這個房間號碼已經有人使用了！請換一個。");
+        }
+
+        const initialDeck = Array.from({ length: 80 }, () => getRandomLetter());
+        await set(roomRef, {
+          host: nickname, // 標記房主
+          status: "waiting",
+          publicDeck: initialDeck,
+          turnMultiplier: 1,
+          players: {
+            [nickname]: { score: 0, hand: [] }
+          }
+        });
+        setInRoom(true);
+      };
+
+      // --- 加入房間 ---
+      const handleJoinRoom = async () => {
         if (!nickname || !roomId) return alert("請輸入暱稱與房號！");
         
         const roomRef = ref(db, `rooms/${roomId}`);
         const snapshot = await get(roomRef);
         
         if (!snapshot.exists()) {
-          // 房主建立房間，初始化公牌庫 (預設 80 張)
-          const initialDeck = Array.from({ length: 80 }, () => getRandomLetter());
-          await set(roomRef, {
-            status: "waiting",
-            publicDeck: initialDeck,
-            turnIndex: 0,
-            turnMultiplier: 1,
-            players: {
-              [nickname]: { score: 0, order: 0, hand: [] }
-            }
-          });
-        } else {
-          // 一般玩家加入
-          const currentData = snapshot.val();
-          if (currentData.status === "playing") return alert("遊戲已經開始了！");
-          
-          const playerCount = Object.keys(currentData.players || {}).length;
-          if (playerCount >= 8) return alert("房間已滿 (最多8人)！");
-          
-          await update(ref(db, `rooms/${roomId}/players/${nickname}`), {
-            score: 0,
-            order: playerCount,
-            hand: []
-          });
+          return alert("找不到這個房間！請確認房號，或選擇「創建房間」。");
         }
+
+        const currentData = snapshot.val();
+        if (currentData.status === "playing") return alert("遊戲已經開始了，無法中途加入！");
+        if (currentData.players && currentData.players[nickname]) return alert("這個暱稱已經在房間裡了，請換一個！");
+        
+        const playerCount = Object.keys(currentData.players || {}).length;
+        if (playerCount >= 8) return alert("房間已滿 (最多 8 人)！");
+        
+        await update(ref(db, `rooms/${roomId}/players/${nickname}`), {
+          score: 0, hand: []
+        });
         setInRoom(true);
       };
 
-      // 房主開始遊戲 (發牌邏輯)
+      // --- 房主特權：踢掉玩家 ---
+      const kickPlayer = async (targetPlayer) => {
+        if (!confirm(`確定要將【${targetPlayer}】踢出房間嗎？`)) return;
+        
+        const updates = {};
+        updates[`players/${targetPlayer}`] = null; // 從玩家名單刪除
+        
+        // 如果遊戲進行中，處理順位問題
+        if (roomData.status === "playing" && roomData.turnOrder) {
+          const newTurnOrder = roomData.turnOrder.filter(p => p !== targetPlayer);
+          updates["turnOrder"] = newTurnOrder;
+          
+          // 如果踢掉的是現在正在出牌的人，強迫換下一位
+          if (roomData.currentTurnPlayer === targetPlayer && newTurnOrder.length > 0) {
+            const currentIndex = roomData.turnOrder.indexOf(targetPlayer);
+            const nextPlayer = newTurnOrder[currentIndex % newTurnOrder.length];
+            updates["currentTurnPlayer"] = nextPlayer;
+            updates["turnMultiplier"] = 1;
+          }
+        }
+        await update(ref(db, `rooms/${roomId}`), updates);
+      };
+
+      // --- 房主特權：解散房間 ---
+      const disbandRoom = async () => {
+        if (!confirm("⚠️ 確定要解散房間嗎？所有玩家將被踢出，且房間號將釋出。")) return;
+        await remove(ref(db, `rooms/${roomId}`)); // 直接刪除該節點釋出資源
+      };
+
+      // --- 遊戲邏輯 ---
       const startGame = async () => {
         if (!roomData || !roomData.players) return;
         const playerNames = Object.keys(roomData.players);
         const playerCount = playerNames.length;
         
-        // 依人數決定起手牌 (2-3人: 9張, 4-6人: 8張, 7-8人: 7張)
+        if(playerCount < 2) return alert("至少需要 2 人才能開始遊戲！");
+
         let startingCardCount = 9;
         if (playerCount >= 4 && playerCount <= 6) startingCardCount = 8;
         if (playerCount >= 7) startingCardCount = 7;
@@ -237,11 +280,10 @@
         await update(ref(db, `rooms/${roomId}`), updates);
       };
 
-      // --- 拖曳事件 ---
       const handleDragStart = (e, letter, sourceIndex, sourceType) => {
         e.dataTransfer.setData("letter", letter);
         e.dataTransfer.setData("sourceIndex", sourceIndex);
-        e.dataTransfer.setData("sourceType", sourceType); // "hand" 或 "board"
+        e.dataTransfer.setData("sourceType", sourceType);
       };
 
       const handleDropToBoard = (e, targetIndex) => {
@@ -250,7 +292,7 @@
         const sourceIndex = parseInt(e.dataTransfer.getData("sourceIndex"));
         const sourceType = e.dataTransfer.getData("sourceType");
 
-        if (boardSlots[targetIndex] !== null) return; // 該位置已經有牌
+        if (boardSlots[targetIndex] !== null) return; 
 
         const newBoard = [...boardSlots];
         newBoard[targetIndex] = letter;
@@ -258,10 +300,9 @@
         if (sourceType === "hand") {
           const newHand = [...handCards];
           newHand.splice(sourceIndex, 1);
-          // 更新 Firebase 中的手牌
           update(ref(db, `rooms/${roomId}/players/${nickname}`), { hand: newHand });
         } else if (sourceType === "board") {
-          newBoard[sourceIndex] = null; // 板子內部移動
+          newBoard[sourceIndex] = null;
         }
         
         setBoardSlots(newBoard);
@@ -270,7 +311,6 @@
 
       const handleDragOver = (e) => e.preventDefault();
 
-      // 退回手牌 (點擊板子上的牌)
       const returnToHand = (index) => {
         const letter = boardSlots[index];
         if (!letter) return;
@@ -283,20 +323,16 @@
         update(ref(db, `rooms/${roomId}/players/${nickname}`), { hand: newHand });
       };
 
-      // 送出單字
       const submitWord = async () => {
         const word = boardSlots.filter(s => s !== null).join("");
-        if (word.length < 2) {
-          setErrorMsg("至少需要 2 個字母！");
-          return;
-        }
+        if (word.length < 2) return setErrorMsg("至少需要 2 個字母！");
 
         const isValid = await checkWordIsValid(word);
         if (isValid) {
           setErrorMsg("");
           const currentScore = roomData.players[nickname].score || 0;
           const multiplier = roomData.turnMultiplier || 1;
-          const gainedScore = word.length + (multiplier - 1); // 連續出牌加分
+          const gainedScore = word.length + (multiplier - 1);
           
           await update(ref(db, `rooms/${roomId}`), {
             [`players/${nickname}/score`]: currentScore + gainedScore,
@@ -310,7 +346,6 @@
         }
       };
 
-      // 沒單字，抽牌並換人
       const drawAndSkip = async () => {
         let currentDeck = roomData.publicDeck ? [...roomData.publicDeck] : [];
         let newHand = [...handCards];
@@ -324,7 +359,6 @@
         const currentIndex = turnOrder.indexOf(roomData.currentTurnPlayer);
         const nextPlayer = turnOrder[(currentIndex + 1) % turnOrder.length];
 
-        // 將板子上的牌退回手牌
         const activeBoardCards = boardSlots.filter(s => s !== null);
         if (activeBoardCards.length > 0) {
            newHand = [...newHand, ...activeBoardCards];
@@ -335,32 +369,44 @@
           [`players/${nickname}/hand`]: newHand,
           publicDeck: currentDeck,
           currentTurnPlayer: nextPlayer,
-          turnMultiplier: 1 // 換人，加成重置
+          turnMultiplier: 1
         });
       };
 
-      // UI 渲染
+      // ---------------- 渲染 UI ----------------
       if (!inRoom) {
         return (
           <div className="container">
             <h1>📜 線上連線拼字</h1>
             <div className="input-group">
-              <input placeholder="你的暱稱" value={nickname} onChange={e => setNickname(e.target.value)} />
-              <input placeholder="房間號碼" value={roomId} onChange={e => setRoomId(e.target.value)} />
-              <button onClick={joinRoom}>加入房間</button>
+              <div className="input-row">
+                <input placeholder="輸入你的暱稱" value={nickname} onChange={e => setNickname(e.target.value)} />
+              </div>
+              <div className="input-row">
+                <input placeholder="輸入房間號碼" value={roomId} onChange={e => setRoomId(e.target.value)} />
+              </div>
+              <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
+                <button onClick={handleCreateRoom}>建立新房間</button>
+                <button onClick={handleJoinRoom} style={{ backgroundColor: '#2e7d32' }}>加入房間</button>
+              </div>
             </div>
           </div>
         );
       }
 
+      const isHost = roomData?.host === nickname;
       const isMyTurn = roomData?.currentTurnPlayer === nickname;
-      const isRoomAdmin = roomData?.players && Object.keys(roomData.players)[0] === nickname;
 
       return (
         <div className="container">
-          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2>房號: {roomId}</h2>
-            <h3>玩家: {nickname}</h3>
+          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2>房號: {roomId} {isHost && "👑"}</h2>
+              <h3>玩家: {nickname}</h3>
+            </div>
+            {isHost && (
+              <button className="btn-danger" onClick={disbandRoom}>解散房間</button>
+            )}
           </header>
 
           <div className="status-panel">
@@ -368,16 +414,23 @@
             <p><strong>目前輪到：</strong> {roomData?.currentTurnPlayer || "尚未開始"}</p>
             <p><strong>剩餘公牌：</strong> {roomData?.publicDeck?.length || 0} 張</p>
             <hr style={{ borderColor: "#4a3b32", opacity: 0.3 }} />
-            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+            
+            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
               {roomData?.players && Object.entries(roomData.players).map(([name, data]) => (
-                <div key={name}>
-                  {name}: {data.score} 分 {name === roomData.currentTurnPlayer ? "🎯" : ""}
+                <div key={name} className="player-chip">
+                  {name === roomData.host && "👑 "} {name}: {data.score} 分 
+                  {name === roomData.currentTurnPlayer ? " 🎯" : ""}
+                  
+                  {/* 房主踢人按鈕 (不能踢自己) */}
+                  {isHost && name !== nickname && (
+                    <button className="btn-danger btn-small" onClick={() => kickPlayer(name)}>踢除</button>
+                  )}
                 </div>
               ))}
             </div>
           </div>
 
-          {roomData?.status === "waiting" && isRoomAdmin && (
+          {roomData?.status === "waiting" && isHost && (
             <div style={{ textAlign: 'center' }}>
               <button onClick={startGame}>全員到齊，開始遊戲！</button>
             </div>
