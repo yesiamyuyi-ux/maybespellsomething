@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>線上連機拼字遊戲</title>
+  
+  <!-- 載入 React 與 ReactDOM (CDN) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- 載入 Babel 以解析 JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 復古羊皮紙與紅墨水塗鴉風格 */
+    body {
+      background-color: #f4ecd8; /* 羊皮紙底色 */
+      font-family: 'Helvetica Neue', sans-serif;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 800px;
+      background: #fffbfa;
+      border: 3px solid #4a3b32;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 6px 6px 0px #4a3b32;
+    }
+    h1, h2, h3 { text-align: center; color: #4a3b32; }
+    
+    .input-group { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+    input { padding: 10px; border: 2px solid #4a3b32; border-radius: 6px; font-size: 16px; }
+    button {
+      padding: 10px 20px;
+      background-color: #4a3b32;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      transition: transform 0.1s;
+    }
+    button:active { transform: scale(0.95); }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
+
+    /* 紅墨水吐槽風格 (用於錯誤提示或強調) */
+    .red-ink-doodle {
+      color: #d32f2f;
+      font-family: 'Comic Sans MS', cursive;
+      font-weight: bold;
+      transform: rotate(-3deg);
+      text-decoration: underline wavy #d32f2f;
+      display: inline-block;
+      margin-top: 10px;
+    }
+
+    /* 卡牌與拖曳區佈局 */
+    .board-area, .hand-area {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin: 20px 0;
+      min-height: 80px;
+    }
+    .slot {
+      width: 60px;
+      height: 80px;
+      border: 2px dashed #4a3b32;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(0,0,0,0.05);
+    }
+    .card {
+      width: 60px;
+      height: 80px;
+      background-color: #fff;
+      border: 2px solid #4a3b32;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: grab;
+      box-shadow: 2px 2px 0px #4a3b32;
+      user-select: none;
+    }
+    .card:active { cursor: grabbing; }
+    
+    .status-panel {
+      background: #e9e2ce;
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #4a3b32;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="root"></div>
+
+  <!-- 使用 type="text/babel" 搭配 data-type="module" 來使用 Firebase CDN import -->
+  <script type="text/babel" data-type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+    import { getDatabase, ref, set, get, update, onValue } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+
+    // 1. Firebase 初始化 (直接套用你提供的設定)
+    const firebaseConfig = {
+      apiKey: "AIzaSyD_NvqFklhilwIMOJ7dGIdAsuz1IGuCH_w",
+      authDomain: "maybespellsomething.firebaseapp.com",
+      databaseURL: "https://maybespellsomething-default-rtdb.firebaseio.com",
+      projectId: "maybespellsomething",
+      storageBucket: "maybespellsomething.firebasestorage.app",
+      messagingSenderId: "872268418078",
+      appId: "1:872268418078:web:8dd218aad0cd01914d720f",
+      measurementId: "G-MG3KM8VEBR"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const { useState, useEffect } = React;
+
+    // 產生隨機字母的工具 (增加母音比例)
+    const getRandomLetter = () => {
+      const letters = "AAAAEEEIIIOOOUUUBBCDDFFGGGHHJKLLMMNNPPRRSSTTVWXYZ";
+      return letters[Math.floor(Math.random() * letters.length)];
+    };
+
+    // 驗證單字 API
+    const checkWordIsValid = async (word) => {
+      if (!word || word.length < 2) return false;
+      try {
+        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`);
+        return res.ok;
+      } catch (err) {
+        return false;
+      }
+    };
+
+    // --- 主元件 ---
+    function App() {
+      const [nickname, setNickname] = useState("");
+      const [roomId, setRoomId] = useState("");
+      const [inRoom, setInRoom] = useState(false);
+      
+      // 遊戲狀態
+      const [roomData, setRoomData] = useState(null);
+      const [handCards, setHandCards] = useState([]);
+      const [boardSlots, setBoardSlots] = useState([null, null, null, null, null, null, null]);
+      const [errorMsg, setErrorMsg] = useState("");
+
+      // 監聽房間資料
+      useEffect(() => {
+        if (inRoom && roomId) {
+          const roomRef = ref(db, `rooms/${roomId}`);
+          const unsubscribe = onValue(roomRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+              setRoomData(data);
+              // 同步自己的手牌
+              if (data.players && data.players[nickname] && data.players[nickname].hand) {
+                setHandCards(data.players[nickname].hand);
+              } else {
+                setHandCards([]);
+              }
+            }
+          });
+          return () => unsubscribe();
+        }
+      }, [inRoom, roomId, nickname]);
+
+      // 加入/建立房間
+      const joinRoom = async () => {
+        if (!nickname || !roomId) return alert("請輸入暱稱與房號！");
+        
+        const roomRef = ref(db, `rooms/${roomId}`);
+        const snapshot = await get(roomRef);
+        
+        if (!snapshot.exists()) {
+          // 房主建立房間，初始化公牌庫 (預設 80 張)
+          const initialDeck = Array.from({ length: 80 }, () => getRandomLetter());
+          await set(roomRef, {
+            status: "waiting",
+            publicDeck: initialDeck,
+            turnIndex: 0,
+            turnMultiplier: 1,
+            players: {
+              [nickname]: { score: 0, order: 0, hand: [] }
+            }
+          });
+        } else {
+          // 一般玩家加入
+          const currentData = snapshot.val();
+          if (currentData.status === "playing") return alert("遊戲已經開始了！");
+          
+          const playerCount = Object.keys(currentData.players || {}).length;
+          if (playerCount >= 8) return alert("房間已滿 (最多8人)！");
+          
+          await update(ref(db, `rooms/${roomId}/players/${nickname}`), {
+            score: 0,
+            order: playerCount,
+            hand: []
+          });
+        }
+        setInRoom(true);
+      };
+
+      // 房主開始遊戲 (發牌邏輯)
+      const startGame = async () => {
+        if (!roomData || !roomData.players) return;
+        const playerNames = Object.keys(roomData.players);
+        const playerCount = playerNames.length;
+        
+        // 依人數決定起手牌 (2-3人: 9張, 4-6人: 8張, 7-8人: 7張)
+        let startingCardCount = 9;
+        if (playerCount >= 4 && playerCount <= 6) startingCardCount = 8;
+        if (playerCount >= 7) startingCardCount = 7;
+
+        let currentDeck = [...roomData.publicDeck];
+        const updates = { status: "playing", turnOrder: playerNames, currentTurnPlayer: playerNames[0] };
+        
+        playerNames.forEach(player => {
+          const hand = currentDeck.splice(0, startingCardCount);
+          updates[`players/${player}/hand`] = hand;
+        });
+        
+        updates["publicDeck"] = currentDeck;
+        await update(ref(db, `rooms/${roomId}`), updates);
+      };
+
+      // --- 拖曳事件 ---
+      const handleDragStart = (e, letter, sourceIndex, sourceType) => {
+        e.dataTransfer.setData("letter", letter);
+        e.dataTransfer.setData("sourceIndex", sourceIndex);
+        e.dataTransfer.setData("sourceType", sourceType); // "hand" 或 "board"
+      };
+
+      const handleDropToBoard = (e, targetIndex) => {
+        e.preventDefault();
+        const letter = e.dataTransfer.getData("letter");
+        const sourceIndex = parseInt(e.dataTransfer.getData("sourceIndex"));
+        const sourceType = e.dataTransfer.getData("sourceType");
+
+        if (boardSlots[targetIndex] !== null) return; // 該位置已經有牌
+
+        const newBoard = [...boardSlots];
+        newBoard[targetIndex] = letter;
+
+        if (sourceType === "hand") {
+          const newHand = [...handCards];
+          newHand.splice(sourceIndex, 1);
+          // 更新 Firebase 中的手牌
+          update(ref(db, `rooms/${roomId}/players/${nickname}`), { hand: newHand });
+        } else if (sourceType === "board") {
+          newBoard[sourceIndex] = null; // 板子內部移動
+        }
+        
+        setBoardSlots(newBoard);
+        setErrorMsg("");
+      };
+
+      const handleDragOver = (e) => e.preventDefault();
+
+      // 退回手牌 (點擊板子上的牌)
+      const returnToHand = (index) => {
+        const letter = boardSlots[index];
+        if (!letter) return;
+        
+        const newBoard = [...boardSlots];
+        newBoard[index] = null;
+        setBoardSlots(newBoard);
+        
+        const newHand = [...handCards, letter];
+        update(ref(db, `rooms/${roomId}/players/${nickname}`), { hand: newHand });
+      };
+
+      // 送出單字
+      const submitWord = async () => {
+        const word = boardSlots.filter(s => s !== null).join("");
+        if (word.length < 2) {
+          setErrorMsg("至少需要 2 個字母！");
+          return;
+        }
+
+        const isValid = await checkWordIsValid(word);
+        if (isValid) {
+          setErrorMsg("");
+          const currentScore = roomData.players[nickname].score || 0;
+          const multiplier = roomData.turnMultiplier || 1;
+          const gainedScore = word.length + (multiplier - 1); // 連續出牌加分
+          
+          await update(ref(db, `rooms/${roomId}`), {
+            [`players/${nickname}/score`]: currentScore + gainedScore,
+            turnMultiplier: multiplier + 1
+          });
+          
+          setBoardSlots([null, null, null, null, null, null, null]);
+          alert(`✅ 拼字成功！獲得 ${gainedScore} 分。你有額外出牌機會！`);
+        } else {
+          setErrorMsg(`字典裡沒有 ${word} 這個字啦！重拼！`);
+        }
+      };
+
+      // 沒單字，抽牌並換人
+      const drawAndSkip = async () => {
+        let currentDeck = roomData.publicDeck ? [...roomData.publicDeck] : [];
+        let newHand = [...handCards];
+        
+        if (currentDeck.length > 0) {
+          const drawnCard = currentDeck.shift();
+          newHand.push(drawnCard);
+        }
+
+        const turnOrder = roomData.turnOrder || [];
+        const currentIndex = turnOrder.indexOf(roomData.currentTurnPlayer);
+        const nextPlayer = turnOrder[(currentIndex + 1) % turnOrder.length];
+
+        // 將板子上的牌退回手牌
+        const activeBoardCards = boardSlots.filter(s => s !== null);
+        if (activeBoardCards.length > 0) {
+           newHand = [...newHand, ...activeBoardCards];
+           setBoardSlots([null, null, null, null, null, null, null]);
+        }
+
+        await update(ref(db, `rooms/${roomId}`), {
+          [`players/${nickname}/hand`]: newHand,
+          publicDeck: currentDeck,
+          currentTurnPlayer: nextPlayer,
+          turnMultiplier: 1 // 換人，加成重置
+        });
+      };
+
+      // UI 渲染
+      if (!inRoom) {
+        return (
+          <div className="container">
+            <h1>📜 線上連線拼字</h1>
+            <div className="input-group">
+              <input placeholder="你的暱稱" value={nickname} onChange={e => setNickname(e.target.value)} />
+              <input placeholder="房間號碼" value={roomId} onChange={e => setRoomId(e.target.value)} />
+              <button onClick={joinRoom}>加入房間</button>
+            </div>
+          </div>
+        );
+      }
+
+      const isMyTurn = roomData?.currentTurnPlayer === nickname;
+      const isRoomAdmin = roomData?.players && Object.keys(roomData.players)[0] === nickname;
+
+      return (
+        <div className="container">
+          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2>房號: {roomId}</h2>
+            <h3>玩家: {nickname}</h3>
+          </header>
+
+          <div className="status-panel">
+            <p><strong>狀態：</strong> {roomData?.status === "waiting" ? "等待玩家中..." : "遊戲進行中"}</p>
+            <p><strong>目前輪到：</strong> {roomData?.currentTurnPlayer || "尚未開始"}</p>
+            <p><strong>剩餘公牌：</strong> {roomData?.publicDeck?.length || 0} 張</p>
+            <hr style={{ borderColor: "#4a3b32", opacity: 0.3 }} />
+            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+              {roomData?.players && Object.entries(roomData.players).map(([name, data]) => (
+                <div key={name}>
+                  {name}: {data.score} 分 {name === roomData.currentTurnPlayer ? "🎯" : ""}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {roomData?.status === "waiting" && isRoomAdmin && (
+            <div style={{ textAlign: 'center' }}>
+              <button onClick={startGame}>全員到齊，開始遊戲！</button>
+            </div>
+          )}
+
+          {roomData?.status === "playing" && (
+            <>
+              <h3>拼字區 (拖曳卡牌上來)</h3>
+              <div className="board-area">
+                {boardSlots.map((letter, index) => (
+                  <div 
+                    key={`slot-${index}`} 
+                    className="slot"
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDropToBoard(e, index)}
+                    onClick={() => returnToHand(index)}
+                  >
+                    {letter && (
+                      <div 
+                        className="card"
+                        draggable={isMyTurn}
+                        onDragStart={(e) => handleDragStart(e, letter, index, "board")}
+                      >
+                        {letter}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ textAlign: 'center', minHeight: '40px' }}>
+                {errorMsg && <div className="red-ink-doodle">{errorMsg}</div>}
+              </div>
+
+              <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                <button onClick={submitWord} disabled={!isMyTurn} style={{ marginRight: '10px' }}>確認拼字</button>
+                <button onClick={drawAndSkip} disabled={!isMyTurn} style={{ backgroundColor: '#8b4513' }}>沒單字了，抽牌並跳過</button>
+              </div>
+
+              <h3>你的手牌</h3>
+              <div className="hand-area">
+                {handCards.map((letter, index) => (
+                  <div 
+                    key={`hand-${index}`} 
+                    className="card"
+                    draggable={isMyTurn}
+                    onDragStart={(e) => handleDragStart(e, letter, index, "hand")}
+                  >
+                    {letter}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
