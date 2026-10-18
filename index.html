@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>線上連機拼字遊戲</title>
   
-  <!-- 載入 React 與 ReactDOM (CDN) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- 載入 Babel 以解析 JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
@@ -23,46 +21,37 @@
     }
     .container {
       width: 100%;
-      max-width: 800px;
+      max-width: 900px;
       background: #fffbfa;
       border: 3px solid #4a3b32;
       border-radius: 12px;
       padding: 20px;
       box-shadow: 6px 6px 0px #4a3b32;
     }
-    h1, h2, h3 { text-align: center; color: #4a3b32; }
+    h1, h2, h3, h4 { text-align: center; color: #4a3b32; margin-top: 0; }
     
-    .input-group { display: flex; flex-direction: column; gap: 15px; align-items: center; margin-bottom: 20px; }
-    .input-row { display: flex; gap: 10px; justify-content: center; width: 100%; max-width: 400px; }
-    input { flex: 1; padding: 10px; border: 2px solid #4a3b32; border-radius: 6px; font-size: 16px; }
+    .split-lobby { display: flex; gap: 20px; margin-bottom: 20px; }
+    .lobby-card {
+      flex: 1; padding: 20px; border: 2px dashed #4a3b32; border-radius: 8px;
+      display: flex; flex-direction: column; gap: 10px; background: #faf4e6;
+    }
+    
+    input { padding: 10px; border: 2px solid #4a3b32; border-radius: 6px; font-size: 16px; width: 90%; }
     
     button {
-      padding: 10px 20px;
-      background-color: #4a3b32;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      transition: transform 0.1s;
+      padding: 10px 15px; background-color: #4a3b32; color: white;
+      border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;
     }
     button:active { transform: scale(0.95); }
     button:disabled { background-color: #ccc; cursor: not-allowed; }
 
-    /* 警告與危險操作按鈕 */
     .btn-danger { background-color: #d32f2f; }
-    .btn-small { padding: 4px 8px; font-size: 12px; margin-left: 10px; }
+    .btn-success { background-color: #2e7d32; }
+    .btn-small { padding: 4px 8px; font-size: 12px; margin-left: 5px; }
 
-    /* 紅墨水吐槽風格 */
     .red-ink-doodle {
-      color: #d32f2f;
-      font-family: 'Comic Sans MS', cursive;
-      font-weight: bold;
-      transform: rotate(-3deg);
-      text-decoration: underline wavy #d32f2f;
-      display: inline-block;
-      margin-top: 10px;
+      color: #d32f2f; font-family: 'Comic Sans MS', cursive; font-weight: bold;
+      transform: rotate(-3deg); text-decoration: underline wavy #d32f2f; display: inline-block; margin-top: 10px;
     }
 
     .board-area, .hand-area {
@@ -82,10 +71,17 @@
     .status-panel {
       background: #e9e2ce; padding: 15px; border-radius: 8px; border: 2px solid #4a3b32; margin-bottom: 20px;
     }
-    
     .player-chip {
-      background: rgba(255,255,255,0.6); padding: 5px 10px; border-radius: 20px; border: 1px solid #4a3b32;
-      display: flex; align-items: center;
+      background: rgba(255,255,255,0.7); padding: 5px 10px; border-radius: 20px; border: 1px solid #4a3b32;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .ready-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
+    .ready-dot.on { background-color: #4caf50; }
+    .ready-dot.off { background-color: #d32f2f; }
+    
+    .draw-initial-btn {
+      padding: 20px 40px; font-size: 20px; background-color: #d84315; color: white;
+      border-radius: 12px; border: 3px solid #bf360c; cursor: pointer; margin: 20px auto; display: block;
     }
   </style>
 </head>
@@ -94,11 +90,9 @@
   <div id="root"></div>
 
   <script type="text/babel" data-type="module">
-    // 增加引入 remove 用來刪除房間
     import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
     import { getDatabase, ref, set, get, update, onValue, remove } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 
-    // Firebase 初始化
     const firebaseConfig = {
       apiKey: "AIzaSyD_NvqFklhilwIMOJ7dGIdAsuz1IGuCH_w",
       authDomain: "maybespellsomething.firebaseapp.com",
@@ -120,7 +114,7 @@
     };
 
     const checkWordIsValid = async (word) => {
-      if (!word || word.length < 2) return false;
+      if (!word) return false;
       try {
         const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`);
         return res.ok;
@@ -131,45 +125,50 @@
 
     function App() {
       const [nickname, setNickname] = useState("");
+      
+      // 大廳表單狀態
+      const [createRoomId, setCreateRoomId] = useState("");
+      const [deckSize, setDeckSize] = useState(80);
+      const [targetScore, setTargetScore] = useState(30);
+      
+      const [joinRoomId, setJoinRoomId] = useState("");
+
+      // 遊戲內狀態
       const [roomId, setRoomId] = useState("");
       const [inRoom, setInRoom] = useState(false);
-      
       const [roomData, setRoomData] = useState(null);
       const [handCards, setHandCards] = useState([]);
-      const [boardSlots, setBoardSlots] = useState([null, null, null, null, null, null, null]);
+      const [boardSlots, setBoardSlots] = useState([null, null, null, null, null, null, null, null]);
       const [errorMsg, setErrorMsg] = useState("");
 
-      // 重置回大廳狀態
       const backToLobby = () => {
         setInRoom(false);
+        setRoomId("");
         setRoomData(null);
         setHandCards([]);
-        setBoardSlots([null, null, null, null, null, null, null]);
+        setBoardSlots([null, null, null, null, null, null, null, null]);
       };
 
-      // 監聽房間狀態 (處理被踢或解散)
+      // 監聽房間狀態
       useEffect(() => {
         if (inRoom && roomId) {
           const roomRef = ref(db, `rooms/${roomId}`);
           const unsubscribe = onValue(roomRef, (snapshot) => {
             const data = snapshot.val();
             
-            // 1. 房間不存在 (被解散)
             if (!data) {
-              alert("❌ 房間已被房主解散！");
+              alert("❌ 房間已被解散！");
               backToLobby();
               return;
             }
-            
-            // 2. 玩家不在名單內 (被踢出)
             if (!data.players || !data.players[nickname]) {
-              alert("❌ 你已被房主踢出房間！");
+              alert("❌ 你已離開或被踢出房間！");
               backToLobby();
               return;
             }
 
             setRoomData(data);
-            if (data.players[nickname] && data.players[nickname].hand) {
+            if (data.players[nickname]?.hand) {
               setHandCards(data.players[nickname].hand);
             } else {
               setHandCards([]);
@@ -181,105 +180,142 @@
 
       // --- 創建房間 ---
       const handleCreateRoom = async () => {
-        if (!nickname || !roomId) return alert("請輸入暱稱與房號！");
+        if (!nickname || !createRoomId) return alert("請輸入暱稱與欲建立的房號！");
+        if (deckSize < 60) return alert("公牌數至少需要 60 張！");
+        if (targetScore < 10) return alert("獲勝分數至少需要 10 分！");
         
-        const roomRef = ref(db, `rooms/${roomId}`);
+        const roomRef = ref(db, `rooms/${createRoomId}`);
         const snapshot = await get(roomRef);
         
-        if (snapshot.exists()) {
-          return alert("這個房間號碼已經有人使用了！請換一個。");
-        }
+        if (snapshot.exists()) return alert("此房間號碼已被使用，請換一個！");
 
-        const initialDeck = Array.from({ length: 80 }, () => getRandomLetter());
+        const initialDeck = Array.from({ length: deckSize }, () => getRandomLetter());
         await set(roomRef, {
-          host: nickname, // 標記房主
-          status: "waiting",
+          host: nickname,
+          status: "waiting", // waiting, playing, ended
+          deckSize: parseInt(deckSize),
+          targetScore: parseInt(targetScore),
           publicDeck: initialDeck,
           turnMultiplier: 1,
           players: {
-            [nickname]: { score: 0, hand: [] }
+            [nickname]: { score: 0, isReady: true, hand: [] } // 房主預設準備
           }
         });
+        setRoomId(createRoomId);
         setInRoom(true);
       };
 
       // --- 加入房間 ---
       const handleJoinRoom = async () => {
-        if (!nickname || !roomId) return alert("請輸入暱稱與房號！");
+        if (!nickname || !joinRoomId) return alert("請輸入暱稱與房號！");
         
-        const roomRef = ref(db, `rooms/${roomId}`);
+        const roomRef = ref(db, `rooms/${joinRoomId}`);
         const snapshot = await get(roomRef);
         
-        if (!snapshot.exists()) {
-          return alert("找不到這個房間！請確認房號，或選擇「創建房間」。");
-        }
+        if (!snapshot.exists()) return alert("找不到這個房間！");
 
         const currentData = snapshot.val();
-        if (currentData.status === "playing") return alert("遊戲已經開始了，無法中途加入！");
-        if (currentData.players && currentData.players[nickname]) return alert("這個暱稱已經在房間裡了，請換一個！");
+        if (currentData.status !== "waiting") return alert("遊戲已經開始或結束，無法加入！");
+        if (currentData.players && currentData.players[nickname]) return alert("此暱稱已在房間內，請換一個！");
         
         const playerCount = Object.keys(currentData.players || {}).length;
         if (playerCount >= 8) return alert("房間已滿 (最多 8 人)！");
         
-        await update(ref(db, `rooms/${roomId}/players/${nickname}`), {
-          score: 0, hand: []
+        await update(ref(db, `rooms/${joinRoomId}/players/${nickname}`), {
+          score: 0, isReady: false, hand: []
         });
+        setRoomId(joinRoomId);
         setInRoom(true);
       };
 
-      // --- 房主特權：踢掉玩家 ---
+      // --- 玩家操作：準備 / 取消準備 ---
+      const toggleReady = async () => {
+        const currentReady = roomData.players[nickname].isReady;
+        await update(ref(db, `rooms/${roomId}/players/${nickname}`), {
+          isReady: !currentReady
+        });
+      };
+
+      // --- 玩家操作：退出房間 ---
+      const leaveRoom = async () => {
+        if (!confirm("確定要退出房間嗎？")) return;
+        
+        // 如果是房主退出，直接解散房間
+        if (roomData.host === nickname) {
+          await remove(ref(db, `rooms/${roomId}`));
+        } else {
+          const updates = {};
+          updates[`players/${nickname}`] = null;
+          
+          if (roomData.status === "playing" && roomData.turnOrder) {
+            const newTurnOrder = roomData.turnOrder.filter(p => p !== nickname);
+            updates["turnOrder"] = newTurnOrder;
+            if (roomData.currentTurnPlayer === nickname && newTurnOrder.length > 0) {
+              const currentIndex = roomData.turnOrder.indexOf(nickname);
+              updates["currentTurnPlayer"] = newTurnOrder[currentIndex % newTurnOrder.length];
+              updates["turnMultiplier"] = 1;
+            }
+          }
+          await update(ref(db, `rooms/${roomId}`), updates);
+        }
+      };
+
+      // --- 房主操作：踢除玩家 ---
       const kickPlayer = async (targetPlayer) => {
         if (!confirm(`確定要將【${targetPlayer}】踢出房間嗎？`)) return;
-        
         const updates = {};
-        updates[`players/${targetPlayer}`] = null; // 從玩家名單刪除
+        updates[`players/${targetPlayer}`] = null;
         
-        // 如果遊戲進行中，處理順位問題
         if (roomData.status === "playing" && roomData.turnOrder) {
           const newTurnOrder = roomData.turnOrder.filter(p => p !== targetPlayer);
           updates["turnOrder"] = newTurnOrder;
-          
-          // 如果踢掉的是現在正在出牌的人，強迫換下一位
           if (roomData.currentTurnPlayer === targetPlayer && newTurnOrder.length > 0) {
             const currentIndex = roomData.turnOrder.indexOf(targetPlayer);
-            const nextPlayer = newTurnOrder[currentIndex % newTurnOrder.length];
-            updates["currentTurnPlayer"] = nextPlayer;
+            updates["currentTurnPlayer"] = newTurnOrder[currentIndex % newTurnOrder.length];
             updates["turnMultiplier"] = 1;
           }
         }
         await update(ref(db, `rooms/${roomId}`), updates);
       };
 
-      // --- 房主特權：解散房間 ---
+      // --- 房主操作：解散房間 ---
       const disbandRoom = async () => {
-        if (!confirm("⚠️ 確定要解散房間嗎？所有玩家將被踢出，且房間號將釋出。")) return;
-        await remove(ref(db, `rooms/${roomId}`)); // 直接刪除該節點釋出資源
+        if (!confirm("⚠️ 確定要解散房間嗎？房間號將釋出。")) return;
+        await remove(ref(db, `rooms/${roomId}`));
       };
 
-      // --- 遊戲邏輯 ---
+      // --- 房主操作：開始遊戲 ---
       const startGame = async () => {
-        if (!roomData || !roomData.players) return;
         const playerNames = Object.keys(roomData.players);
-        const playerCount = playerNames.length;
+        const allReady = playerNames.every(p => roomData.players[p].isReady);
         
-        if(playerCount < 2) return alert("至少需要 2 人才能開始遊戲！");
+        if (playerNames.length < 2) return alert("至少需要 2 人才能開始遊戲！");
+        if (!allReady) return alert("還有玩家尚未準備好！");
 
+        await update(ref(db, `rooms/${roomId}`), { 
+          status: "playing", 
+          turnOrder: playerNames, 
+          currentTurnPlayer: playerNames[0] 
+        });
+      };
+
+      // --- 互動性抽牌：開局抽取手牌 ---
+      const drawInitialHand = async () => {
+        const playerCount = Object.keys(roomData.players).length;
         let startingCardCount = 9;
         if (playerCount >= 4 && playerCount <= 6) startingCardCount = 8;
         if (playerCount >= 7) startingCardCount = 7;
 
         let currentDeck = [...roomData.publicDeck];
-        const updates = { status: "playing", turnOrder: playerNames, currentTurnPlayer: playerNames[0] };
-        
-        playerNames.forEach(player => {
-          const hand = currentDeck.splice(0, startingCardCount);
-          updates[`players/${player}/hand`] = hand;
+        const drawnCards = currentDeck.splice(0, startingCardCount);
+
+        await update(ref(db, `rooms/${roomId}`), {
+          [`players/${nickname}/hand`]: drawnCards,
+          publicDeck: currentDeck
         });
-        
-        updates["publicDeck"] = currentDeck;
-        await update(ref(db, `rooms/${roomId}`), updates);
       };
 
+      // --- 遊戲邏輯：拖曳與驗證 ---
       const handleDragStart = (e, letter, sourceIndex, sourceType) => {
         e.dataTransfer.setData("letter", letter);
         e.dataTransfer.setData("sourceIndex", sourceIndex);
@@ -314,7 +350,6 @@
       const returnToHand = (index) => {
         const letter = boardSlots[index];
         if (!letter) return;
-        
         const newBoard = [...boardSlots];
         newBoard[index] = null;
         setBoardSlots(newBoard);
@@ -325,7 +360,7 @@
 
       const submitWord = async () => {
         const word = boardSlots.filter(s => s !== null).join("");
-        if (word.length < 2) return setErrorMsg("至少需要 2 個字母！");
+        if (word.length === 0) return setErrorMsg("拼字區是空的！");
 
         const isValid = await checkWordIsValid(word);
         if (isValid) {
@@ -333,14 +368,23 @@
           const currentScore = roomData.players[nickname].score || 0;
           const multiplier = roomData.turnMultiplier || 1;
           const gainedScore = word.length + (multiplier - 1);
+          const newScore = currentScore + gainedScore;
           
-          await update(ref(db, `rooms/${roomId}`), {
-            [`players/${nickname}/score`]: currentScore + gainedScore,
-            turnMultiplier: multiplier + 1
-          });
-          
-          setBoardSlots([null, null, null, null, null, null, null]);
-          alert(`✅ 拼字成功！獲得 ${gainedScore} 分。你有額外出牌機會！`);
+          if (newScore >= roomData.targetScore) {
+            await update(ref(db, `rooms/${roomId}`), {
+              [`players/${nickname}/score`]: newScore,
+              status: "ended",
+              winner: nickname
+            });
+            alert(`🎉 恭喜！你以 ${newScore} 分達成了獲勝目標！`);
+          } else {
+            await update(ref(db, `rooms/${roomId}`), {
+              [`players/${nickname}/score`]: newScore,
+              turnMultiplier: multiplier + 1
+            });
+            alert(`✅ 拼字成功！獲得 ${gainedScore} 分。可以繼續出牌！`);
+          }
+          setBoardSlots([null, null, null, null, null, null, null, null]);
         } else {
           setErrorMsg(`字典裡沒有 ${word} 這個字啦！重拼！`);
         }
@@ -362,7 +406,7 @@
         const activeBoardCards = boardSlots.filter(s => s !== null);
         if (activeBoardCards.length > 0) {
            newHand = [...newHand, ...activeBoardCards];
-           setBoardSlots([null, null, null, null, null, null, null]);
+           setBoardSlots([null, null, null, null, null, null, null, null]);
         }
 
         await update(ref(db, `rooms/${roomId}`), {
@@ -373,21 +417,41 @@
         });
       };
 
-      // ---------------- 渲染 UI ----------------
+
+      // ================= UI 渲染 =================
       if (!inRoom) {
         return (
           <div className="container">
             <h1>📜 線上連線拼字</h1>
-            <div className="input-group">
-              <div className="input-row">
-                <input placeholder="輸入你的暱稱" value={nickname} onChange={e => setNickname(e.target.value)} />
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <input 
+                placeholder="在此輸入你的遊戲暱稱" 
+                value={nickname} 
+                onChange={e => setNickname(e.target.value)} 
+                style={{ width: '60%', textAlign: 'center' }}
+              />
+            </div>
+
+            <div className="split-lobby">
+              {/* 創建房間區塊 */}
+              <div className="lobby-card">
+                <h3>👑 創建新房間</h3>
+                <label>自訂房號：</label>
+                <input placeholder="例如: 8888" value={createRoomId} onChange={e => setCreateRoomId(e.target.value)} />
+                <label>公牌總數量：</label>
+                <input type="number" min="60" value={deckSize} onChange={e => setDeckSize(e.target.value)} />
+                <label>獲勝目標分數：</label>
+                <input type="number" min="10" value={targetScore} onChange={e => setTargetScore(e.target.value)} />
+                <button onClick={handleCreateRoom} style={{ marginTop: '10px' }}>創立房間</button>
               </div>
-              <div className="input-row">
-                <input placeholder="輸入房間號碼" value={roomId} onChange={e => setRoomId(e.target.value)} />
-              </div>
-              <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
-                <button onClick={handleCreateRoom}>建立新房間</button>
-                <button onClick={handleJoinRoom} style={{ backgroundColor: '#2e7d32' }}>加入房間</button>
+
+              {/* 加入房間區塊 */}
+              <div className="lobby-card">
+                <h3>👥 加入房間</h3>
+                <label>輸入房號：</label>
+                <input placeholder="輸入好友給的房號" value={joinRoomId} onChange={e => setJoinRoomId(e.target.value)} />
+                <p style={{ fontSize: '12px', color: '#666' }}>※ 房主解散房間後，原房號即可重複使用。</p>
+                <button onClick={handleJoinRoom} className="btn-success" style={{ marginTop: 'auto' }}>加入遊戲</button>
               </div>
             </div>
           </div>
@@ -396,32 +460,39 @@
 
       const isHost = roomData?.host === nickname;
       const isMyTurn = roomData?.currentTurnPlayer === nickname;
+      const myReadyStatus = roomData?.players[nickname]?.isReady;
+      const hasDrawnInitial = handCards.length > 0;
 
       return (
         <div className="container">
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h2>房號: {roomId} {isHost && "👑"}</h2>
-              <h3>玩家: {nickname}</h3>
+              <p style={{ margin: '5px 0', fontWeight: 'bold' }}>獲勝目標：先達到 {roomData?.targetScore} 分者獲勝</p>
             </div>
-            {isHost && (
-              <button className="btn-danger" onClick={disbandRoom}>解散房間</button>
-            )}
+            <div>
+              {isHost ? (
+                <button className="btn-danger" onClick={disbandRoom}>解散房間</button>
+              ) : (
+                <button className="btn-danger" onClick={leaveRoom}>退出房間</button>
+              )}
+            </div>
           </header>
 
           <div className="status-panel">
-            <p><strong>狀態：</strong> {roomData?.status === "waiting" ? "等待玩家中..." : "遊戲進行中"}</p>
-            <p><strong>目前輪到：</strong> {roomData?.currentTurnPlayer || "尚未開始"}</p>
-            <p><strong>剩餘公牌：</strong> {roomData?.publicDeck?.length || 0} 張</p>
+            <p><strong>狀態：</strong> {roomData?.status === "waiting" ? "等待玩家準備中..." : roomData?.status === "ended" ? "遊戲結束" : "遊戲進行中"}</p>
+            {roomData?.status === "playing" && <p><strong>目前輪到：</strong> {roomData?.currentTurnPlayer}</p>}
+            <p><strong>剩餘公牌：</strong> {roomData?.publicDeck?.length || 0} / {roomData?.deckSize} 張</p>
             <hr style={{ borderColor: "#4a3b32", opacity: 0.3 }} />
             
             <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
               {roomData?.players && Object.entries(roomData.players).map(([name, data]) => (
                 <div key={name} className="player-chip">
-                  {name === roomData.host && "👑 "} {name}: {data.score} 分 
-                  {name === roomData.currentTurnPlayer ? " 🎯" : ""}
+                  <span className={`ready-dot ${data.isReady ? 'on' : 'off'}`}></span>
+                  {name === roomData.host && "👑 "} {name} 
+                  {roomData.status !== "waiting" && <span>: {data.score} 分</span>}
+                  {name === roomData.currentTurnPlayer && roomData.status === "playing" ? " 🎯" : ""}
                   
-                  {/* 房主踢人按鈕 (不能踢自己) */}
                   {isHost && name !== nickname && (
                     <button className="btn-danger btn-small" onClick={() => kickPlayer(name)}>踢除</button>
                   )}
@@ -430,15 +501,41 @@
             </div>
           </div>
 
-          {roomData?.status === "waiting" && isHost && (
-            <div style={{ textAlign: 'center' }}>
-              <button onClick={startGame}>全員到齊，開始遊戲！</button>
+          {/* 準備與開始畫面 */}
+          {roomData?.status === "waiting" && (
+            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+              {!isHost && (
+                <button 
+                  onClick={toggleReady} 
+                  style={{ backgroundColor: myReadyStatus ? '#d32f2f' : '#2e7d32', marginRight: '10px' }}
+                >
+                  {myReadyStatus ? "取消準備" : "準備完成！"}
+                </button>
+              )}
+              {isHost && (
+                <button onClick={startGame}>全員準備完畢，開始遊戲！</button>
+              )}
             </div>
           )}
 
-          {roomData?.status === "playing" && (
+          {/* 遊戲結束畫面 */}
+          {roomData?.status === "ended" && (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <h1 style={{ color: '#d32f2f' }}>🎉 遊戲結束 🎉</h1>
+              <h2>獲勝者：{roomData?.winner}</h2>
+            </div>
+          )}
+
+          {/* 遊戲進行中畫面 */}
+          {roomData?.status === "playing" && !hasDrawnInitial && (
+            <button className="draw-initial-btn" onClick={drawInitialHand}>
+              🃏 抽取開局手牌
+            </button>
+          )}
+
+          {roomData?.status === "playing" && hasDrawnInitial && (
             <>
-              <h3>拼字區 (拖曳卡牌上來)</h3>
+              <h3>拼字區 (從手牌拖曳任意數量的字母上來)</h3>
               <div className="board-area">
                 {boardSlots.map((letter, index) => (
                   <div 
@@ -467,7 +564,7 @@
 
               <div style={{ textAlign: 'center', marginTop: '10px' }}>
                 <button onClick={submitWord} disabled={!isMyTurn} style={{ marginRight: '10px' }}>確認拼字</button>
-                <button onClick={drawAndSkip} disabled={!isMyTurn} style={{ backgroundColor: '#8b4513' }}>沒單字了，抽牌並跳過</button>
+                <button onClick={drawAndSkip} disabled={!isMyTurn} style={{ backgroundColor: '#8b4513' }}>無法拼字，抽一張並跳過</button>
               </div>
 
               <h3>你的手牌</h3>
