@@ -116,26 +116,35 @@
       return letters[Math.floor(Math.random() * letters.length)];
     };
 
+// 嚴格版驗證：只使用正統字典 API，並透過 404 狀態碼精準抓出假字
     const checkWordIsValid = async (word) => {
       if (!word) return false;
       const cleanWord = word.trim().toLowerCase();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4秒連線超時限制
 
       try {
-        const res1 = await fetch(`https://api.datamuse.com/words?sp=${cleanWord}&max=1`, { signal: controller.signal });
-        const data1 = await res1.json();
-        if (data1.length > 0 && data1[0].word.toLowerCase() === cleanWord) {
-          clearTimeout(timeoutId);
-          return "VALID";
-        }
-
-        const res2 = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`, { signal: controller.signal });
+        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`, { 
+          signal: controller.signal 
+        });
         clearTimeout(timeoutId);
-        return res2.ok ? "VALID" : "INVALID";
+        
+        // 狀態碼 200 代表字典裡確實有這個字
+        if (res.ok) {
+          return "VALID";
+        } 
+        // 狀態碼 404 代表字典明確回應「沒有這個單字」
+        else if (res.status === 404) {
+          return "INVALID";
+        } 
+        // 伺服器掛掉或其他狀況 (例如 500 錯誤)
+        else {
+          return "ERROR";
+        }
       } catch (err) {
         clearTimeout(timeoutId);
         if (err.name === 'AbortError') return "TIMEOUT";
+        console.error("驗證API發生錯誤", err);
         return "ERROR";
       }
     };
