@@ -80,11 +80,6 @@
     .ready-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
     .ready-dot.on { background-color: #4caf50; }
     .ready-dot.off { background-color: #d32f2f; }
-    
-    .draw-initial-btn {
-      padding: 20px 40px; font-size: 20px; background-color: #d84315; color: white;
-      border-radius: 12px; border: 3px solid #bf360c; cursor: pointer; margin: 20px auto; display: block;
-    }
 
     .appeal-box {
       background-color: #fff3e0; border: 2px dashed #f57c00; border-radius: 8px;
@@ -115,29 +110,32 @@
     const db = getDatabase(app);
     const { useState, useEffect } = React;
 
+    // 特調超高母音比例，減少 G 等冷門子音
     const getRandomLetter = () => {
-      const letters = "AAAAEEEIIIOOOUUUBBCDDFFGGGHHJKLLMMNNPPRRSSTTVWXYZ";
+      const letters = "AAAAAAAAAAAAEEEEEEEEEEEEEEEIIIIIIIIIIIIOOOOOOOOOOOOUUUUUUUUBBCCDDDDFGGHHHJKLLLLMMNNNNNNPPQRRRRRRSSSSSSTTTTTTVWXYYZ";
       return letters[Math.floor(Math.random() * letters.length)];
     };
 
-    // 加入 Timeout 機制的驗證 API
     const checkWordIsValid = async (word) => {
       if (!word) return false;
+      const cleanWord = word.trim().toLowerCase();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4秒超時強制中斷
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       try {
-        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`, {
-          signal: controller.signal
-        });
+        const res1 = await fetch(`https://api.datamuse.com/words?sp=${cleanWord}&max=1`, { signal: controller.signal });
+        const data1 = await res1.json();
+        if (data1.length > 0 && data1[0].word.toLowerCase() === cleanWord) {
+          clearTimeout(timeoutId);
+          return "VALID";
+        }
+
+        const res2 = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`, { signal: controller.signal });
         clearTimeout(timeoutId);
-        return res.ok ? "VALID" : "INVALID";
+        return res2.ok ? "VALID" : "INVALID";
       } catch (err) {
         clearTimeout(timeoutId);
-        if (err.name === 'AbortError') {
-          return "TIMEOUT";
-        }
-        console.error("字典API驗證錯誤", err);
+        if (err.name === 'AbortError') return "TIMEOUT";
         return "ERROR";
       }
     };
@@ -185,12 +183,12 @@
             const data = snapshot.val();
             
             if (!data) {
-              alert("❌ 房間已被解散！");
+              alert("❌ 江湖已被解散！");
               backToLobby();
               return;
             }
             if (!data.players || !data.players[nickname]) {
-              alert("❌ 你已離開或被踢出房間！");
+              alert("❌ 你已離開江湖或被踢出！");
               backToLobby();
               return;
             }
@@ -207,14 +205,14 @@
       }, [inRoom, roomId, nickname]);
 
       const handleCreateRoom = async () => {
-        if (!nickname || !createRoomId) return alert("請輸入暱稱與欲建立的房號！");
+        if (!nickname || !createRoomId) return alert("報上尊姓大名與欲開創的江湖編號！");
         if (deckSize < 60) return alert("公牌數至少需要 60 張！");
-        if (targetScore < 10) return alert("獲勝分數至少需要 10 分！");
+        if (targetScore < 10) return alert("榜首分數至少需要 10 分！");
         
         const roomRef = ref(db, `rooms/${createRoomId}`);
         const snapshot = await get(roomRef);
         
-        if (snapshot.exists()) return alert("此房間號碼已被使用，請換一個！");
+        if (snapshot.exists()) return alert("此江湖編號已被使用，請換一個！");
 
         const initialDeck = Array.from({ length: deckSize }, () => getRandomLetter());
         await set(roomRef, {
@@ -233,19 +231,19 @@
       };
 
       const handleJoinRoom = async () => {
-        if (!nickname || !joinRoomId) return alert("請輸入暱稱與房號！");
+        if (!nickname || !joinRoomId) return alert("請報上尊姓大名與江湖編號！");
         
         const roomRef = ref(db, `rooms/${joinRoomId}`);
         const snapshot = await get(roomRef);
         
-        if (!snapshot.exists()) return alert("找不到這個房間！");
+        if (!snapshot.exists()) return alert("迷失在江湖裡！");
 
         const currentData = snapshot.val();
-        if (currentData.status !== "waiting") return alert("遊戲已經開始或結束，無法加入！");
-        if (currentData.players && currentData.players[nickname]) return alert("此暱稱已在房間內，請換一個！");
+        if (currentData.status !== "waiting") return alert("比試已經開始或結束，無法加入！");
+        if (currentData.players && currentData.players[nickname]) return alert("此名號已在江湖裡，請換一個！");
         
         const playerCount = Object.keys(currentData.players || {}).length;
-        if (playerCount >= 8) return alert("房間已滿 (最多 8 人)！");
+        if (playerCount >= 8) return alert("幫會已滿 (最多 8 人)！");
         
         await update(ref(db, `rooms/${joinRoomId}/players/${nickname}`), {
           score: 0, isReady: false, hand: []
@@ -262,7 +260,7 @@
       };
 
       const leaveRoom = async () => {
-        if (!confirm("確定要退出房間嗎？")) return;
+        if (!confirm("確定要退出江湖嗎？")) return;
         if (roomData.host === nickname) {
           await remove(ref(db, `rooms/${roomId}`));
         } else {
@@ -283,7 +281,7 @@
       };
 
       const kickPlayer = async (targetPlayer) => {
-        if (!confirm(`確定要將【${targetPlayer}】踢出房間嗎？`)) return;
+        if (!confirm(`確定要將【${targetPlayer}】踢出幫會嗎？`)) return;
         const updates = {};
         updates[`players/${targetPlayer}`] = null;
         
@@ -300,7 +298,7 @@
       };
 
       const disbandRoom = async () => {
-        if (!confirm("⚠️ 確定要解散房間嗎？房間號將釋出。")) return;
+        if (!confirm("⚠️ 確定要解散幫會嗎？江湖編號將釋出。")) return;
         await remove(ref(db, `rooms/${roomId}`));
       };
 
@@ -308,29 +306,31 @@
         const playerNames = Object.keys(roomData.players);
         const allReady = playerNames.every(p => roomData.players[p].isReady);
         
-        if (playerNames.length < 2) return alert("至少需要 2 人才能開始遊戲！");
-        if (!allReady) return alert("還有玩家尚未準備好！");
+        if (playerNames.length < 2) return alert("至少需要 2 人才能開始比試！");
+        if (!allReady) return alert("還有成員尚未準備好！");
 
-        await update(ref(db, `rooms/${roomId}`), { 
-          status: "playing", 
-          turnOrder: playerNames, 
-          currentTurnPlayer: playerNames[0] 
-        });
-      };
-
-      const drawInitialHand = async () => {
-        const playerCount = Object.keys(roomData.players).length;
         let startingCardCount = 9;
-        if (playerCount >= 4 && playerCount <= 6) startingCardCount = 8;
-        if (playerCount >= 7) startingCardCount = 7;
+        if (playerNames.length >= 4 && playerNames.length <= 6) startingCardCount = 8;
+        if (playerNames.length >= 7) startingCardCount = 7;
 
         let currentDeck = [...roomData.publicDeck];
-        const drawnCards = currentDeck.splice(0, startingCardCount);
-
-        await update(ref(db, `rooms/${roomId}`), {
-          [`players/${nickname}/hand`]: drawnCards,
-          publicDeck: currentDeck
+        const updates = { 
+          status: "playing", 
+          turnOrder: playerNames, 
+          currentTurnPlayer: playerNames[0],
+          turnMultiplier: 1,
+          endReason: null // 初始化結束理由
+        };
+        
+        playerNames.forEach(player => {
+          const hand = currentDeck.splice(0, startingCardCount);
+          updates[`players/${player}/hand`] = hand;
+          updates[`players/${player}/score`] = 0;
+          updates[`players/${player}/isReady`] = false;
         });
+        
+        updates["publicDeck"] = currentDeck;
+        await update(ref(db, `rooms/${roomId}`), updates);
       };
 
       const handleDragStart = (e, letter, sourceIndex, sourceType) => {
@@ -341,7 +341,7 @@
 
       const handleDropToBoard = (e, targetIndex) => {
         e.preventDefault();
-        resetAppeal(); 
+        resetAppeal();
 
         const letter = e.dataTransfer.getData("letter");
         const sourceIndex = parseInt(e.dataTransfer.getData("sourceIndex"));
@@ -366,7 +366,7 @@
       const handleDragOver = (e) => e.preventDefault();
 
       const returnToHand = (index) => {
-        resetAppeal(); 
+        resetAppeal();
         const letter = boardSlots[index];
         if (!letter) return;
         const newBoard = [...boardSlots];
@@ -380,32 +380,32 @@
       const handleWordSuccess = async (word, isAppeal = false) => {
         const currentScore = roomData.players[nickname].score || 0;
         const multiplier = roomData.turnMultiplier || 1;
-        const gainedScore = word.length + (multiplier - 1);
+        const gainedScore = word.length * multiplier;
         const newScore = currentScore + gainedScore;
         
         if (newScore >= roomData.targetScore) {
           await update(ref(db, `rooms/${roomId}`), {
             [`players/${nickname}/score`]: newScore,
             status: "ended",
-            winner: nickname
+            winner: nickname,
+            endReason: "率先達到榜首目標分數！"
           });
-          alert(`🎉 恭喜！你以 ${newScore} 分達成了獲勝目標！`);
+          alert(`🎉 恭喜！你以 ${newScore} 分達成為了榜首！`);
         } else {
           await update(ref(db, `rooms/${roomId}`), {
             [`players/${nickname}/score`]: newScore,
             turnMultiplier: multiplier + 1
           });
           if (isAppeal) {
-            alert(`✅ 申訴成功！已強制判定過關，獲得 ${gainedScore} 分。可以繼續出牌！`);
+            alert(`✅ 申訴審核通過！獲得 ${gainedScore} 分。可以繼續出牌！`);
           } else {
-            alert(`✅ 拼字成功！獲得 ${gainedScore} 分。可以繼續出牌！`);
+            alert(`✅ 拼字成功！(長度 ${word.length} × 倍率 ${multiplier}) 獲得 ${gainedScore} 分。可以繼續出牌！`);
           }
         }
         setBoardSlots([null, null, null, null, null, null, null, null]);
         resetAppeal();
       };
 
-      // 改寫驗證邏輯，判斷回傳值處理不同狀況
       const submitWord = async () => {
         const word = boardSlots.filter(s => s !== null).join("");
         if (word.length === 0) return setErrorMsg("拼字區是空的！");
@@ -422,13 +422,12 @@
             setErrorMsg(`字典裡沒有「${word}」！如果確定是真字，請使用下方申訴。`);
             setAppealWord(word);
           } else {
-            // TIMEOUT 或 ERROR 發生時，直接觸發申訴 UI 讓玩家過關
-            setErrorMsg(`字典伺服器無回應或連線逾時！請直接貼上辭典網址來證明「${word}」是存在的。`);
+            setErrorMsg(`字典伺服器無回應或連線逾時！請使用下方申訴證明。`);
             setAppealWord(word);
           }
         } catch (error) {
           console.error("送出單字發生錯誤：", error);
-          setErrorMsg(`系統錯誤！請直接貼上辭典網址來證明「${word}」是存在的。`);
+          setErrorMsg(`系統錯誤！請使用下方申訴證明。`);
           setAppealWord(word);
         } finally {
           setIsVerifying(false);
@@ -436,9 +435,27 @@
       };
 
       const handleAppeal = () => {
-        if (!appealUrl.includes("http")) {
-          return alert("請輸入有效的辭典網址 (需包含 http)！");
+        const url = appealUrl.toLowerCase();
+        
+        const validDomains = [
+          "cambridge.org", "oxford", "merriam-webster", "dictionary.com", 
+          "vocabulary.com", "wiktionary.org", "yahoo"
+        ];
+        const isValidDict = validDomains.some(domain => url.includes(domain));
+
+        if (!url.includes("http")) {
+          return alert("請輸入完整的網址 (需包含 http 或 https)！");
         }
+        
+        if (!isValidDict) {
+          return alert("❌ 申訴駁回！請提供知名線上辭典的網址 (例如 Cambridge, Oxford, Dictionary.com, Yahoo字典等)。");
+        }
+
+        // 核心檢查：確保網址內真的有包含玩家宣稱的單字
+        if (!url.includes(appealWord.toLowerCase())) {
+          return alert(`❌ 申訴駁回！網址內似乎沒有包含您要申訴的單字「${appealWord}」，請確認貼上的是該單字的專屬頁面。`);
+        }
+
         handleWordSuccess(appealWord, true);
       };
 
@@ -447,10 +464,31 @@
         let currentDeck = roomData.publicDeck ? [...roomData.publicDeck] : [];
         let newHand = [...handCards];
         
-        if (currentDeck.length > 0) {
-          const drawnCard = currentDeck.shift();
-          newHand.push(drawnCard);
+        // 死局判定：如果公牌已空，直接比較最高分結束遊戲
+        if (currentDeck.length === 0) {
+          const playerEntries = Object.entries(roomData.players);
+          let highestScore = -1;
+          let winnerName = "";
+          
+          for (let [p, d] of playerEntries) {
+            if ((d.score || 0) > highestScore) {
+              highestScore = d.score || 0;
+              winnerName = p;
+            }
+          }
+          
+          await update(ref(db, `rooms/${roomId}`), {
+            status: "ended",
+            winner: winnerName,
+            endReason: "公牌已被抽完，雙方無法出牌，結算最高分者獲勝！"
+          });
+          alert("公牌已空！遊戲直接結算最高分者。");
+          return;
         }
+
+        // 正常抽牌換人
+        const drawnCard = currentDeck.shift();
+        newHand.push(drawnCard);
 
         const turnOrder = roomData.turnOrder || [];
         const currentIndex = turnOrder.indexOf(roomData.currentTurnPlayer);
@@ -473,10 +511,10 @@
       if (!inRoom) {
         return (
           <div className="container">
-            <h1>📜 一字千金</h1>
+            <h1>📜 一字千金 💰</h1>
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <input 
-                placeholder="報上你的尊姓大名" 
+                placeholder="來者何人 報上名來" 
                 value={nickname} 
                 onChange={e => setNickname(e.target.value)} 
                 style={{ width: '60%', textAlign: 'center' }}
@@ -485,22 +523,22 @@
 
             <div className="split-lobby">
               <div className="lobby-card">
-                <h3>👑 開創你的江湖</h3>
-                <label>江湖編號：</label>
+                <h3>👑 創建新幫會</h3>
+                <label>自訂江湖編號：</label>
                 <input placeholder="例如: 8888" value={createRoomId} onChange={e => setCreateRoomId(e.target.value)} />
                 <label>公牌總數量：</label>
                 <input type="number" min="60" value={deckSize} onChange={e => setDeckSize(e.target.value)} />
-                <label>榜首目標積分：</label>
+                <label>榜首目標分數：</label>
                 <input type="number" min="10" value={targetScore} onChange={e => setTargetScore(e.target.value)} />
-                <button onClick={handleCreateRoom} style={{ marginTop: '10px' }}>創立江湖</button>
+                <button onClick={handleCreateRoom} style={{ marginTop: '10px' }}>創立幫會</button>
               </div>
 
               <div className="lobby-card">
-                <h3>👥 加入已有江湖</h3>
+                <h3>👥 加入幫會</h3>
                 <label>輸入江湖編號：</label>
-                <input placeholder="輸入密友給的江湖編號" value={joinRoomId} onChange={e => setJoinRoomId(e.target.value)} />
-                <p style={{ fontSize: '12px', color: '#666' }}>※ 盟主解散江湖後，原編號即可重複使用。</p>
-                <button onClick={handleJoinRoom} className="btn-success" style={{ marginTop: 'auto' }}>加入江湖</button>
+                <input placeholder="輸入盟主給的編號" value={joinRoomId} onChange={e => setJoinRoomId(e.target.value)} />
+                <p style={{ fontSize: '12px', color: '#666' }}>※ 盟主解散幫會後，原編號即可重複使用。</p>
+                <button onClick={handleJoinRoom} className="btn-success" style={{ marginTop: 'auto' }}>加入幫會</button>
               </div>
             </div>
           </div>
@@ -510,18 +548,17 @@
       const isHost = roomData?.host === nickname;
       const isMyTurn = roomData?.currentTurnPlayer === nickname;
       const myReadyStatus = roomData?.players[nickname]?.isReady;
-      const hasDrawnInitial = handCards.length > 0;
 
       return (
         <div className="container">
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h2>江湖編號: {roomId} {isHost && "👑"}</h2>
-              <p style={{ margin: '5px 0', fontWeight: 'bold' }}>榜首目標：先達到 {roomData?.targetScore} 分者獲勝</p>
+              <p style={{ margin: '5px 0', fontWeight: 'bold' }}>獲勝目標：先達到 {roomData?.targetScore} 分者獲勝</p>
             </div>
             <div>
               {isHost ? (
-                <button className="btn-danger" onClick={disbandRoom}>解散江湖</button>
+                <button className="btn-danger" onClick={disbandRoom}>解散幫會</button>
               ) : (
                 <button className="btn-danger" onClick={leaveRoom}>退出江湖</button>
               )}
@@ -529,7 +566,7 @@
           </header>
 
           <div className="status-panel">
-            <p><strong>狀態：</strong> {roomData?.status === "waiting" ? "等待玩家準備中..." : roomData?.status === "ended" ? "遊戲結束" : "遊戲進行中"}</p>
+            <p><strong>狀態：</strong> {roomData?.status === "waiting" ? "等待成員準備中..." : roomData?.status === "ended" ? "比試結束" : "比試進行中"}</p>
             {roomData?.status === "playing" && <p><strong>目前輪到：</strong> {roomData?.currentTurnPlayer}</p>}
             <p><strong>剩餘公牌：</strong> {roomData?.publicDeck?.length || 0} / {roomData?.deckSize} 張</p>
             <hr style={{ borderColor: "#4a3b32", opacity: 0.3 }} />
@@ -561,7 +598,7 @@
                 </button>
               )}
               {isHost && (
-                <button onClick={startGame}>全員準備完畢！</button>
+                <button onClick={startGame}>全員準備完畢，比試開始！</button>
               )}
             </div>
           )}
@@ -570,16 +607,11 @@
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <h1 style={{ color: '#d32f2f' }}>🎉 比試結束 🎉</h1>
               <h2>榜首：{roomData?.winner}</h2>
+              {roomData?.endReason && <p style={{ color: '#4a3b32', marginTop: '10px' }}>{roomData.endReason}</p>}
             </div>
           )}
 
-          {roomData?.status === "playing" && !hasDrawnInitial && (
-            <button className="draw-initial-btn" onClick={drawInitialHand}>
-              🃏 抽取開局手牌
-            </button>
-          )}
-
-          {roomData?.status === "playing" && hasDrawnInitial && (
+          {roomData?.status === "playing" && (
             <>
               <h3>拼字區 (從手牌拖曳字母上來)</h3>
               <div className="board-area">
@@ -611,7 +643,7 @@
               {appealWord && (
                 <div className="appeal-box">
                   <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>
-                    真的有「{appealWord}」這個字嗎？請貼上線上辭典網址來申訴！
+                    如果「{appealWord}」是真的單字，請貼上線上辭典網址來申訴！
                   </p>
                   <input 
                     placeholder="例如: https://dictionary.cambridge.org/..." 
@@ -620,7 +652,7 @@
                     style={{ width: '60%', marginBottom: '10px' }}
                   />
                   <br/>
-                  <button className="btn-warning" onClick={handleAppeal}>送出申訴並強制過關</button>
+                  <button className="btn-warning" onClick={handleAppeal}>送出申訴</button>
                   <button className="btn-secondary" onClick={resetAppeal} style={{ marginLeft: '10px' }}>算了，我重拼</button>
                 </div>
               )}
