@@ -120,14 +120,25 @@
       return letters[Math.floor(Math.random() * letters.length)];
     };
 
+    // 加入 Timeout 機制的驗證 API
     const checkWordIsValid = async (word) => {
       if (!word) return false;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4秒超時強制中斷
+
       try {
-        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`);
-        return res.ok;
+        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return res.ok ? "VALID" : "INVALID";
       } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          return "TIMEOUT";
+        }
         console.error("字典API驗證錯誤", err);
-        return false;
+        return "ERROR";
       }
     };
 
@@ -394,6 +405,7 @@
         resetAppeal();
       };
 
+      // 改寫驗證邏輯，判斷回傳值處理不同狀況
       const submitWord = async () => {
         const word = boardSlots.filter(s => s !== null).join("");
         if (word.length === 0) return setErrorMsg("拼字區是空的！");
@@ -402,16 +414,22 @@
         resetAppeal();
 
         try {
-          const isValid = await checkWordIsValid(word);
-          if (isValid) {
+          const status = await checkWordIsValid(word);
+          
+          if (status === "VALID") {
             await handleWordSuccess(word);
+          } else if (status === "INVALID") {
+            setErrorMsg(`字典裡沒有「${word}」！如果確定是真字，請使用下方申訴。`);
+            setAppealWord(word);
           } else {
-            setErrorMsg(`系統找不到「${word}」！如果確定是真字，請使用下方申訴功能。`);
+            // TIMEOUT 或 ERROR 發生時，直接觸發申訴 UI 讓玩家過關
+            setErrorMsg(`字典伺服器無回應或連線逾時！請直接貼上辭典網址來證明「${word}」是存在的。`);
             setAppealWord(word);
           }
         } catch (error) {
           console.error("送出單字發生錯誤：", error);
-          setErrorMsg("驗證或連線時發生錯誤，請重試！");
+          setErrorMsg(`系統錯誤！請直接貼上辭典網址來證明「${word}」是存在的。`);
+          setAppealWord(word);
         } finally {
           setIsVerifying(false);
         }
