@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>線上連線拼字遊戲</title>
+  <title>一字千金</title>
   
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -473,10 +473,10 @@
       if (!inRoom) {
         return (
           <div className="container">
-            <h1>📜 線上連線拼字</h1>
+            <h1>📜 一字千金</h1>
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <input 
-                placeholder="在此輸入你的遊戲暱稱" 
+                placeholder="報上你的尊姓大名" 
                 value={nickname} 
                 onChange={e => setNickname(e.target.value)} 
                 style={{ width: '60%', textAlign: 'center' }}
@@ -485,22 +485,22 @@
 
             <div className="split-lobby">
               <div className="lobby-card">
-                <h3>👑 創建新房間</h3>
-                <label>自訂房號：</label>
+                <h3>👑 開創你的江湖</h3>
+                <label>江湖編號：</label>
                 <input placeholder="例如: 8888" value={createRoomId} onChange={e => setCreateRoomId(e.target.value)} />
                 <label>公牌總數量：</label>
                 <input type="number" min="60" value={deckSize} onChange={e => setDeckSize(e.target.value)} />
-                <label>獲勝目標分數：</label>
+                <label>榜首目標積分：</label>
                 <input type="number" min="10" value={targetScore} onChange={e => setTargetScore(e.target.value)} />
-                <button onClick={handleCreateRoom} style={{ marginTop: '10px' }}>創立房間</button>
+                <button onClick={handleCreateRoom} style={{ marginTop: '10px' }}>創立江湖</button>
               </div>
 
               <div className="lobby-card">
-                <h3>👥 加入房間</h3>
-                <label>輸入房號：</label>
-                <input placeholder="輸入好友給的房號" value={joinRoomId} onChange={e => setJoinRoomId(e.target.value)} />
-                <p style={{ fontSize: '12px', color: '#666' }}>※ 房主解散房間後，原房號即可重複使用。</p>
-                <button onClick={handleJoinRoom} className="btn-success" style={{ marginTop: 'auto' }}>加入遊戲</button>
+                <h3>👥 加入已有江湖</h3>
+                <label>輸入江湖編號：</label>
+                <input placeholder="輸入密友給的江湖編號" value={joinRoomId} onChange={e => setJoinRoomId(e.target.value)} />
+                <p style={{ fontSize: '12px', color: '#666' }}>※ 盟主解散江湖後，原編號即可重複使用。</p>
+                <button onClick={handleJoinRoom} className="btn-success" style={{ marginTop: 'auto' }}>加入江湖</button>
               </div>
             </div>
           </div>
@@ -516,14 +516,14 @@
         <div className="container">
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <h2>房號: {roomId} {isHost && "👑"}</h2>
-              <p style={{ margin: '5px 0', fontWeight: 'bold' }}>獲勝目標：先達到 {roomData?.targetScore} 分者獲勝</p>
+              <h2>江湖編號: {roomId} {isHost && "👑"}</h2>
+              <p style={{ margin: '5px 0', fontWeight: 'bold' }}>榜首目標：先達到 {roomData?.targetScore} 分者獲勝</p>
             </div>
             <div>
               {isHost ? (
-                <button className="btn-danger" onClick={disbandRoom}>解散房間</button>
+                <button className="btn-danger" onClick={disbandRoom}>解散江湖</button>
               ) : (
-                <button className="btn-danger" onClick={leaveRoom}>退出房間</button>
+                <button className="btn-danger" onClick={leaveRoom}>退出江湖</button>
               )}
             </div>
           </header>
@@ -557,19 +557,19 @@
                   onClick={toggleReady} 
                   style={{ backgroundColor: myReadyStatus ? '#d32f2f' : '#2e7d32', marginRight: '10px' }}
                 >
-                  {myReadyStatus ? "取消準備" : "準備完成！"}
+                  {myReadyStatus ? "收拾包袱中" : "放馬過來！"}
                 </button>
               )}
               {isHost && (
-                <button onClick={startGame}>全員準備完畢，開始遊戲！</button>
+                <button onClick={startGame}>全員準備完畢！</button>
               )}
             </div>
           )}
 
           {roomData?.status === "ended" && (
             <div style={{ textAlign: 'center', padding: '40px' }}>
-              <h1 style={{ color: '#d32f2f' }}>🎉 遊戲結束 🎉</h1>
-              <h2>獲勝者：{roomData?.winner}</h2>
+              <h1 style={{ color: '#d32f2f' }}>🎉 比試結束 🎉</h1>
+              <h2>榜首：{roomData?.winner}</h2>
             </div>
           )}
 
