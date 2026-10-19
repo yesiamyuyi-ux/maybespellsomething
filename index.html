@@ -404,6 +404,27 @@
         setIsVerifying(true);
         resetAppeal();
 
+        try {
+          // 1. 呼叫字典 API 驗證
+          const isValid = await checkWordIsValid(word);
+          
+          // 2. 根據結果處理
+          if (isValid) {
+            await handleWordSuccess(word);
+          } else {
+            setErrorMsg(`系統找不到「${word}」！如果確定是真字，請使用下方申訴功能。`);
+            setAppealWord(word); // 觸發申訴 UI
+          }
+        } catch (error) {
+          // 3. 如果中間發生任何連線錯誤或資料庫錯誤，在這裡攔截
+          console.error("送出單字時發生錯誤：", error);
+          setErrorMsg("驗證或連線時發生錯誤，請再試一次！");
+        } finally {
+          // 4. 【最重要的一步】不管上面成功、失敗還是報錯，最後一定會解除按鈕鎖定！
+          setIsVerifying(false);
+        }
+      };
+
         const isValid = await checkWordIsValid(word);
         
         if (isValid) {
